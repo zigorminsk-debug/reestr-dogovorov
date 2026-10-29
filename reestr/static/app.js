@@ -14,6 +14,9 @@ const state = {
   conflict: null,
   importFile: null,
   importPreview: null,
+  backups: new Map(),
+  pendingRestore: null,
+  restoring: false,
   toastTimer: null,
 };
 
@@ -22,6 +25,7 @@ const PAGE_INFO = {
   contracts: ["Договоры", "Общий реестр с совместным редактированием"],
   reports: ["Отчёты", "Анализ контрагентов, сроков и просроченных оплат"],
   import: ["Импорт Excel", "Загрузка данных из существующего реестра"],
+  backups: ["Копии и восстановление", "Расписание резервных копий и простое восстановление базы"],
 };
 
 const FIELD_LABELS = {
@@ -201,6 +205,10 @@ function showPage(page) {
   if (page === "dashboard") loadDashboard(true);
   if (page === "contracts") loadContracts(true);
   if (page === "reports" && !state.report) generateReport();
+  if (page === "backups") {
+    loadBackupSettings();
+    loadBackups();
+  }
   window.scrollTo({ top: 0, behavior: "instant" });
 }
 
@@ -575,8 +583,156 @@ async function commitImport() {
   }
 }
 
+function backupMessage(text, type = "") {
+  const element = $("#backup-message");
+  element.textContent = text;
+  element.className = `message ${type}`;
+  element.hidden = !text;
+}
+
+function renderBackupSettings(settings) {
+  const form = $("#backup-settings-form");
+  form.elements.enabled.checked = !!settings.enabled;
+  form.elements.time.value = settings.time || "03:00";
+  form.elements.retention.value = settings.retention || 10;
+  form.elements.directory.value = settings.directory || "";
+  const status = [];
+  status.push(`<div><strong>Расписание:</strong> ${settings.enabled ? `включено, ежедневно в ${esc(settings.time)}` : "выключено"}</div>`);
+  if (settings.next_run_at) status.push(`<div><strong>Следующий запуск:</strong> ${dateTimeText(settings.next_run_at)}</div>`);
+  if (settings.last_success_at) status.push(`<div><strong>Последняя успешная копия:</strong> ${dateTimeText(settings.last_success_at)}</div>`);
+  if (settings.last_file) status.push(`<div><strong>Файл:</strong> ${esc(settings.last_file)}</div>`);
+  if (settings.last_error) status.push(`<div class="status-error"><strong>Ошибка последнего запуска:</strong> ${esc(settings.last_error)}</div>`);
+  if (!settings.last_success_at && !settings.last_error) status.push("<div>Автоматическая копия ещё не создавалась.</div>");
+  $("#backup-schedule-status").innerHTML = status.join("");
+}
+
+async function loadBackupSettings() {
+  try {
+    renderBackupSettings(await api("/api/backup-settings"));
+  } catch (error) {
+    backupMessage(error.message, "error");
+  }
+}
+
+async function saveBackupSettings(event) {
+  event.preventDefault();
+  if (!requireOperator()) return;
+  const form = event.currentTarget;
+  const button = $("#save-backup-settings");
+  button.disabled = true;
+  try {
+    const settings = await api("/api/backup-settings", {
+      method: "PUT",
+      body: {
+        enabled: form.elements.enabled.checked,
+        time: form.elements.time.value,
+        retention: Number(form.elements.retention.value),
+        directory: form.elements.directory.value.trim(),
+      },
+    });
+    renderBackupSettings(settings);
+    backupMessage("Настройки резервного копирования сохранены.", "success");
+    toast("Расписание сохранено");
+    loadBackups(true);
+  } catch (error) {
+    backupMessage(error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function backupRow(item) {
+  return `<tr><td><strong class="cell-title">${esc(item.name)}</strong></td><td>${esc(item.directory)}</td><td>${dateTimeText(item.created_at)}</td><td class="number">${bytesText(item.size)}</td><td><div class="row-actions"><a class="button secondary small" href="/api/backups/download?id=${encodeURIComponent(item.id)}" download>Скачать</a><button class="button secondary small" data-action="restore-backup" data-id="${esc(item.id)}">Восстановить</button></div></td></tr>`;
+}
+
+async function loadBackups(silent = false) {
+  try {
+    const data = await api("/api/backups");
+    state.backups = new Map(data.items.map((item) => [item.id, item]));
+    $("#backups-table").innerHTML = data.items.map(backupRow).join("");
+    $("#backups-empty").hidden = data.items.length > 0;
+    $("#backups-table").closest(".table-wrap").hidden = !data.items.length;
+  } catch (error) {
+    if (!silent) backupMessage(error.message, "error");
+  }
+}
+
+async function createBackup() {
+  const buttons = $$('[data-action="create-backup"]');
+  buttons.forEach((button) => { button.disabled = true; });
+  try {
+    const result = await api("/api/backups/create", { method: "POST", body: {} });
+    backupMessage(`Копия создана: ${result.location}`, "success");
+    toast("Резервная копия создана");
+    await loadBackups(true);
+  } catch (error) {
+    backupMessage(error.message, "error");
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+function openRestore(source) {
+  if (!requireOperator()) return;
+  state.pendingRestore = source;
+  const form = $("#restore-form");
+  form.reset();
+  $("#restore-source-name").textContent = source.name;
+  $("#restore-message").hidden = true;
+  $("#restore-confirm-button").disabled = true;
+  $("#restore-dialog").showModal();
+  setTimeout(() => form.elements.confirmation.focus(), 50);
+}
+
+function closeRestore() {
+  if (!state.restoring) $("#restore-dialog").close();
+}
+
+async function restoreDatabase(event) {
+  event.preventDefault();
+  if (!requireOperator() || !state.pendingRestore || state.restoring) return;
+  const form = event.currentTarget;
+  const confirmation = form.elements.confirmation.value.trim();
+  if (confirmation.toUpperCase() !== "ВОССТАНОВИТЬ") return;
+  const source = state.pendingRestore;
+  const button = $("#restore-confirm-button");
+  const message = $("#restore-message");
+  state.restoring = true;
+  button.disabled = true;
+  button.textContent = "Проверка и восстановление…";
+  message.hidden = true;
+  try {
+    let options;
+    if (source.file) {
+      const body = new FormData();
+      body.append("file", source.file, source.file.name);
+      body.append("confirmation", confirmation);
+      options = { method: "POST", body };
+    } else {
+      options = { method: "POST", body: { backup_id: source.backupId, confirmation } };
+    }
+    const result = await api(source.file ? "/api/backups/restore-upload" : "/api/backups/restore", options);
+    $("#restore-dialog").close();
+    state.pendingRestore = null;
+    $("#restore-file").value = "";
+    $("#restore-upload-button").disabled = true;
+    backupMessage(`База восстановлена из ${result.restored_from}: ${result.contracts} записей. Страховочная копия прежней базы: ${result.safety_backup.location}`, "success");
+    toast(`База восстановлена: ${result.contracts} записей`);
+    state.report = null;
+    await Promise.all([loadMeta(), loadDashboard(true), loadContracts(true), loadBackupSettings(), loadBackups(true)]);
+  } catch (error) {
+    message.textContent = error.message;
+    message.hidden = false;
+  } finally {
+    state.restoring = false;
+    button.textContent = "Восстановить базу";
+    button.disabled = form.elements.confirmation.value.trim().toUpperCase() !== "ВОССТАНОВИТЬ";
+  }
+}
+
 async function refreshAll(showMessage = true) {
   await Promise.all([loadHealth(true), loadMeta(), loadDashboard(true), loadContracts(true)]);
+  if (state.page === "backups") await Promise.all([loadBackupSettings(), loadBackups(true)]);
   if (showMessage) toast("Данные обновлены");
 }
 
@@ -591,6 +747,14 @@ function bindEvents() {
   $("#contract-filters").elements.q.addEventListener("input", debounce(() => { state.contractsPage = 1; loadContracts(true); }));
   $$('select', $("#contract-filters")).forEach((select) => select.addEventListener("change", () => { state.contractsPage = 1; loadContracts(true); }));
   $("#report-filters").addEventListener("submit", (event) => { event.preventDefault(); generateReport(); });
+  $("#backup-settings-form").addEventListener("submit", saveBackupSettings);
+  $("#restore-form").addEventListener("submit", restoreDatabase);
+  $("#restore-form").elements.confirmation.addEventListener("input", (event) => {
+    if (!state.restoring) $("#restore-confirm-button").disabled = event.target.value.trim().toUpperCase() !== "ВОССТАНОВИТЬ";
+  });
+  $("#restore-file").addEventListener("change", (event) => {
+    $("#restore-upload-button").disabled = !event.target.files[0];
+  });
   $$(".report-tab").forEach((button) => button.addEventListener("click", () => setReportType(button.dataset.report, "")));
   $$("[data-export]").forEach((button) => button.addEventListener("click", () => downloadReport(button.dataset.export)));
   $("#contracts-prev").addEventListener("click", () => { if (state.contractsPage > 1) { state.contractsPage--; loadContracts(); } });
@@ -633,8 +797,18 @@ function bindEvents() {
       "clear-import": clearImport,
       "preview-import": previewImport,
       "commit-import": commitImport,
+      "create-backup": createBackup,
+      "refresh-backups": () => { loadBackupSettings(); loadBackups(); },
+      "choose-restore-upload": () => {
+        const file = $("#restore-file").files[0];
+        if (file) openRestore({ file, name: file.name });
+      },
+      "close-restore": closeRestore,
     };
-    if (target.dataset.action === "edit-contract") {
+    if (target.dataset.action === "restore-backup") {
+      const item = state.backups.get(target.dataset.id);
+      if (item) openRestore({ backupId: item.id, name: item.name });
+    } else if (target.dataset.action === "edit-contract") {
       const item = state.contracts.get(Number(target.dataset.id));
       if (item && requireOperator()) openContract(item);
     } else if (actions[target.dataset.action]) actions[target.dataset.action]();
@@ -647,7 +821,7 @@ async function init() {
   await Promise.all([loadHealth(true), loadMeta(), loadDashboard(true), loadContracts(true)]);
   if (!state.operator) setTimeout(() => $("#operator-dialog").showModal(), 250);
   setInterval(() => {
-    if (document.hidden || $("#contract-dialog").open || $("#import-preview").hidden === false) return;
+    if (document.hidden || $("#contract-dialog").open || $("#restore-dialog").open || $("#import-preview").hidden === false) return;
     loadHealth(true);
     if (state.page === "dashboard") loadDashboard(true);
     if (state.page === "contracts") loadContracts(true);

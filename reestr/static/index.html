@@ -21,6 +21,7 @@
         <button class="nav-item" data-page="contracts"><span class="nav-icon">▤</span><span>Договоры</span></button>
         <button class="nav-item" data-page="reports"><span class="nav-icon">▥</span><span>Отчёты</span></button>
         <button class="nav-item" data-page="import"><span class="nav-icon">⇥</span><span>Импорт Excel</span></button>
+        <button class="nav-item" data-page="backups"><span class="nav-icon">⛉</span><span>Копии и восстановление</span></button>
       </nav>
       <div class="sidebar-bottom">
         <div class="connection"><span id="connection-dot" class="status-dot"></span><span id="connection-text">Подключение…</span></div>
@@ -156,6 +157,45 @@
             <div class="table-wrap"><table><thead><tr><th>Строка</th><th>Контрагент</th><th>Договор</th><th>Счёт</th><th>Срок оплаты</th><th class="number">Сумма</th><th>Проверка</th></tr></thead><tbody id="import-preview-table"></tbody></table></div>
           </article>
         </section>
+
+        <section id="page-backups" class="page" hidden>
+          <div class="backup-layout">
+            <article class="panel">
+              <div class="panel-header"><div><span class="eyebrow">АВТОМАТИЧЕСКИ</span><h2>Копии по расписанию</h2><p>Расписание работает, пока запущена серверная часть.</p></div></div>
+              <form id="backup-settings-form" class="backup-settings-form">
+                <label class="backup-toggle span-full"><input type="checkbox" name="enabled"><span><strong>Создавать резервную копию ежедневно</strong><small>Если сервер был выключен, пропущенная копия создаётся после запуска в тот же день.</small></span></label>
+                <label><span>Время на сервере</span><input type="time" name="time" required></label>
+                <label><span>Хранить копий</span><input type="number" name="retention" min="1" max="100" required><small>От 1 до 100 более новых файлов</small></label>
+                <label class="span-full"><span>Каталог на сервере или сетевом хранилище</span><input name="directory" required placeholder="D:\Backups\Reestr или \\NAS\Share\Reestr"><small>Это путь на сервере, а не на вашем компьютере. Для сетевой папки нужны права записи у учётной записи SYSTEM.</small></label>
+                <div class="span-full"><button type="submit" id="save-backup-settings" class="button primary">Сохранить расписание</button></div>
+              </form>
+              <div id="backup-schedule-status" class="backup-schedule-status"></div>
+            </article>
+
+            <aside class="panel backup-instructions">
+              <span class="eyebrow">ИНСТРУКЦИЯ</span><h2>Копирование и восстановление</h2>
+              <ol>
+                <li><strong>Настройте расписание</strong><span>Укажите каталог, время и число копий. Старые файлы сверх лимита удаляются автоматически.</span></li>
+                <li><strong>Скачайте копию при необходимости</strong><span>«Создать копию сейчас» сохраняет файл в указанный каталог. «Скачать текущую базу» дополнительно сохраняет копию на ваш компьютер.</span></li>
+                <li><strong>Восстановите базу</strong><span>Нажмите «Восстановить» в строке нужной копии или выберите ранее скачанный .db-файл ниже.</span></li>
+                <li><strong>Подтвердите операцию</strong><span>Введите ВОССТАНОВИТЬ. Останавливать сервер вручную не нужно: запросы пользователей временно приостановятся.</span></li>
+              </ol>
+              <p class="help-note">Перед любой заменой программа автоматически создаёт страховочную копию текущей базы в папке backups\safety. После восстановления появятся данные на дату выбранной копии.</p>
+            </aside>
+          </div>
+
+          <article class="panel backup-actions-panel">
+            <div class="panel-header"><div><span class="eyebrow">ВРУЧНУЮ</span><h2>Резервные копии</h2><p>Создание не прерывает работу пользователей.</p></div><div class="backup-actions"><button class="button primary" data-action="create-backup">＋ Создать копию сейчас</button><a class="button secondary" href="/api/backup" download>Скачать текущую базу</a><button class="button secondary" data-action="refresh-backups">↻ Обновить список</button></div></div>
+            <div id="backup-message" class="message" hidden></div>
+            <div class="table-wrap backup-table"><table><thead><tr><th>Файл</th><th>Расположение</th><th>Создан</th><th class="number">Размер</th><th class="actions-column"></th></tr></thead><tbody id="backups-table"></tbody></table></div>
+            <div id="backups-empty" class="empty-state" hidden><strong>Резервных копий пока нет</strong><span>Создайте копию вручную или включите расписание.</span></div>
+          </article>
+
+          <article class="panel restore-upload-panel">
+            <div><span class="eyebrow">ИЗ СКАЧАННОГО ФАЙЛА</span><h2>Восстановить базу с этого компьютера</h2><p>Выберите файл <code>reestr_backup_….db</code>, ранее скачанный из программы. Файл будет проверен перед заменой.</p></div>
+            <div class="restore-upload-controls"><input id="restore-file" type="file" accept=".db,.sqlite,.sqlite3"><button id="restore-upload-button" class="button danger-solid" data-action="choose-restore-upload" disabled>Загрузить и восстановить</button></div>
+          </article>
+        </section>
       </main>
     </div>
   </div>
@@ -213,6 +253,19 @@
     <div class="dialog-header"><div><h2>Запись уже изменена</h2><p>Другой пользователь сохранил новую версию, пока вы редактировали карточку.</p></div></div>
     <div class="dialog-body"><p>Ваши несохранённые данные не записаны. Загрузите актуальную версию и повторите изменения — это защищает от потери чужой работы.</p></div>
     <div class="dialog-footer"><button class="button secondary" data-action="close-conflict">Закрыть</button><button class="button primary" data-action="reload-conflict">Загрузить актуальную версию</button></div>
+  </dialog>
+
+  <dialog id="restore-dialog" class="small-dialog restore-dialog">
+    <form id="restore-form">
+      <div class="dialog-header"><div><span class="eyebrow">ВОССТАНОВЛЕНИЕ БАЗЫ</span><h2>Заменить текущие данные?</h2></div><button type="button" class="icon-button" data-action="close-restore" aria-label="Закрыть">×</button></div>
+      <div class="dialog-body">
+        <p>Источник: <strong id="restore-source-name"></strong></p>
+        <div class="message warning">Текущие договоры будут заменены данными из копии. Перед заменой программа автоматически создаст страховочную копию текущей базы. Во время операции остальные пользователи должны подождать.</div>
+        <label><span>Для подтверждения введите <strong>ВОССТАНОВИТЬ</strong></span><input name="confirmation" required autocomplete="off" spellcheck="false" placeholder="ВОССТАНОВИТЬ"></label>
+        <div id="restore-message" class="message error" hidden></div>
+      </div>
+      <div class="dialog-footer"><button type="button" class="button secondary" data-action="close-restore">Отмена</button><button type="submit" id="restore-confirm-button" class="button danger-solid" disabled>Восстановить базу</button></div>
+    </form>
   </dialog>
 
   <datalist id="counterparty-list"></datalist><datalist id="currency-list"><option value="RUB"></option><option value="BYN"></option><option value="USD"></option><option value="EUR"></option><option value="CNY"></option></datalist>

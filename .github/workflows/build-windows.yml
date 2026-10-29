@@ -57,10 +57,15 @@ jobs:
             }
             if (-not $healthy) { throw "Packaged server did not become healthy" }
             $homeResponse = Invoke-WebRequest -Uri "http://127.0.0.1:18080/" -TimeoutSec 10
-            if ($homeResponse.Content -notmatch "Реестр договоров") { throw "HTML UI was not packaged" }
+            if ($homeResponse.Content -notmatch "Копии и восстановление") { throw "HTML UI was not packaged" }
+            $backup = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:18080/api/backups/create" -ContentType "application/json" -Body "{}"
+            if (-not $backup.id) { throw "Backup creation smoke test failed" }
+            $restoreBody = @{ backup_id = $backup.id; confirmation = "ВОССТАНОВИТЬ" } | ConvertTo-Json
+            $restored = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:18080/api/backups/restore" -ContentType "application/json; charset=utf-8" -Body $restoreBody
+            if (-not $restored.ok) { throw "Database restore smoke test failed" }
             Invoke-WebRequest -Uri "http://127.0.0.1:18080/api/reports/counterparties/export/pdf" -OutFile "$env:REESTR_DATA_DIR/smoke.pdf" -TimeoutSec 20
             if ((Get-Item "$env:REESTR_DATA_DIR/smoke.pdf").Length -lt 10000) { throw "PDF smoke test failed" }
-            Write-Output "Packaged server, HTML UI and PDF export are healthy."
+            Write-Output "Packaged server, HTML UI, backup/restore and PDF export are healthy."
           } catch {
             $failure = $_.Exception.Message
             Write-Output "SMOKE FAILURE: $failure"

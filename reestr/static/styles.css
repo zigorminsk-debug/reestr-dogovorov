@@ -265,10 +265,45 @@ legend { width: 100%; padding: 0 0 9px; margin-bottom: 12px; border-bottom: 1px 
 .toast.visible { opacity: 1; transform: none; }
 .toast.error { background: #923039; }
 
+/* Backup schedule and guided restore */
+.backup-layout { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(280px, 1fr); gap: 18px; margin-bottom: 18px; }
+.backup-settings-form { display: grid; grid-template-columns: minmax(150px, .6fr) minmax(180px, 1fr); gap: 15px; padding: 21px 22px; }
+.backup-settings-form label { display: grid; align-content: start; gap: 5px; color: #53656a; font-size: 11px; }
+.backup-settings-form label small { color: var(--muted); font-size: 10px; line-height: 1.45; }
+.backup-settings-form .backup-toggle { display: flex; align-items: flex-start; gap: 11px; padding: 12px; border-radius: 8px; background: var(--teal-soft); }
+.backup-toggle input { flex: 0 0 auto; width: 18px; height: 18px; min-height: 0; margin: 2px 0 0; accent-color: var(--teal); }
+.backup-toggle span, .backup-toggle strong, .backup-toggle small { display: block; }
+.backup-toggle strong { color: var(--ink); font-size: 12px; margin-bottom: 4px; }
+.backup-schedule-status { display: grid; gap: 7px; margin: 0 22px 20px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: #f8fafa; color: var(--muted); font-size: 11px; }
+.backup-schedule-status strong { color: var(--ink); }
+.backup-schedule-status .status-error { color: var(--red); }
+.backup-instructions { padding: 23px; }
+.backup-instructions h2 { margin: 4px 0 15px; font-size: 19px; }
+.backup-instructions ol { list-style: none; counter-reset: backup-step; padding: 0; margin: 0 0 15px; }
+.backup-instructions li { position: relative; counter-increment: backup-step; padding: 0 0 15px 34px; }
+.backup-instructions li::before { content: counter(backup-step); position: absolute; left: 0; top: 0; display: grid; place-items: center; width: 23px; height: 23px; border-radius: 50%; background: var(--teal-soft); color: var(--teal); font-size: 10px; font-weight: 800; }
+.backup-instructions li strong, .backup-instructions li span { display: block; }
+.backup-instructions li strong { font-size: 12px; margin-bottom: 3px; }
+.backup-instructions li span { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.backup-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.backup-actions-panel .panel-header { align-items: flex-start; }
+.backup-table { max-height: 520px; }
+.backup-table thead { position: sticky; top: 0; z-index: 1; }
+.backup-table .row-actions { min-width: 205px; }
+.backup-table .button { white-space: nowrap; }
+.restore-upload-panel { display: flex; align-items: center; justify-content: space-between; gap: 25px; margin-top: 18px; padding: 22px; }
+.restore-upload-panel h2 { margin: 4px 0; font-size: 18px; }
+.restore-upload-panel p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.restore-upload-controls { display: flex; align-items: center; gap: 9px; flex: 0 0 auto; }
+.restore-upload-controls input { max-width: 330px; font-size: 11px; }
+.button.danger-solid { color: #fff; background: var(--red); border-color: var(--red); }
+.button.danger-solid:hover:not(:disabled) { background: #9f2d35; }
+.restore-dialog .message { margin: 0 0 18px; }
+
 @media (max-width: 1250px) {
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-grid { grid-template-columns: 1fr; }
-  .import-layout { grid-template-columns: 1fr; }
+  .import-layout, .backup-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) {
   .sidebar { position: static; width: 100%; padding: 13px 16px; }
@@ -284,6 +319,8 @@ legend { width: 100%; padding: 0 0 9px; margin-bottom: 12px; border-bottom: 1px 
   main { padding: 20px; }
   .form-grid.cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .registry-table { max-height: none; }
+  .restore-upload-panel { align-items: stretch; flex-direction: column; }
+  .restore-upload-controls input { max-width: none; }
 }
 @media (max-width: 620px) {
   .topbar p, .operator-button small, .operator-button > span:last-child { display: none; }
@@ -307,6 +344,10 @@ legend { width: 100%; padding: 0 0 9px; margin-bottom: 12px; border-bottom: 1px 
   .history-item { grid-template-columns: 30px 1fr auto; }
   .history-user { display: none; }
   .report-tabs { width: 100%; }
+  .backup-settings-form { grid-template-columns: 1fr; padding: 16px; }
+  .backup-settings-form .span-full { grid-column: auto; }
+  .backup-actions { justify-content: flex-start; }
+  .restore-upload-controls { align-items: stretch; flex-direction: column; }
 }
 
 @media print {

@@ -15,7 +15,8 @@ def uploaded_file() -> tuple[str, bytes]:
     file = request.files.get("file")
     if file is None or not file.filename:
         raise ImportFileError("Выберите файл Excel")
-    return file.filename, file.read()
+    # Keep the global backup-upload limit separate from the 15 MiB Excel limit.
+    return file.filename, file.read(15 * 1024 * 1024 + 1)
 
 
 @bp.post("/preview")

@@ -13,6 +13,7 @@ from pathlib import Path
 from waitress import serve
 
 from reestr import __version__, create_app
+from reestr.backups import BackupScheduler
 from reestr.db import default_data_dir
 
 
@@ -71,14 +72,19 @@ def main() -> None:
     if not args.serve and not args.no_browser:
         threading.Timer(1.2, open_application, args=(url,)).start()
     app.logger.info("Запуск сервера: http://%s:%s, база: %s", args.host, args.port, app.config["DATABASE"])
-    serve(
-        app,
-        host=args.host,
-        port=args.port,
-        threads=16,
-        channel_timeout=120,
-        max_request_body_size=16 * 1024 * 1024,
-    )
+    scheduler = BackupScheduler(app.config["DATA_DIR"], app.extensions["database_gate"])
+    scheduler.start()
+    try:
+        serve(
+            app,
+            host=args.host,
+            port=args.port,
+            threads=16,
+            channel_timeout=120,
+            max_request_body_size=2 * 1024 * 1024 * 1024,
+        )
+    finally:
+        scheduler.stop()
 
 
 if __name__ == "__main__":
