@@ -40,8 +40,12 @@ jobs:
         env:
           REESTR_DATA_DIR: ${{ runner.temp }}/ReestrDogovorovSmoke
         run: |
-          $process = Start-Process -FilePath "$PWD/dist/ReestrDogovorov/ReestrDogovorov.exe" -ArgumentList "--serve", "--host", "127.0.0.1", "--port", "18080", "--no-browser" -PassThru
+          New-Item -ItemType Directory -Force -Path $env:REESTR_DATA_DIR | Out-Null
+          $stdout = Join-Path $env:REESTR_DATA_DIR "smoke.stdout.log"
+          $stderr = Join-Path $env:REESTR_DATA_DIR "smoke.stderr.log"
+          $process = $null
           try {
+            $process = Start-Process -FilePath "$PWD/dist/ReestrDogovorov/ReestrDogovorov.exe" -ArgumentList "--serve", "--host", "127.0.0.1", "--port", "18080", "--no-browser" -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
             $healthy = $false
             for ($attempt = 0; $attempt -lt 45; $attempt++) {
               Start-Sleep -Seconds 1
@@ -49,7 +53,7 @@ jobs:
                 $health = Invoke-RestMethod -Uri "http://127.0.0.1:18080/api/health" -TimeoutSec 3
                 if ($health.ok) { $healthy = $true; break }
               } catch { }
-              if ($process.HasExited) { throw "Packaged server exited during startup" }
+              if ($process.HasExited) { throw "Packaged server exited during startup with code $($process.ExitCode)" }
             }
             if (-not $healthy) { throw "Packaged server did not become healthy" }
             $home = Invoke-WebRequest -Uri "http://127.0.0.1:18080/" -TimeoutSec 10
@@ -57,8 +61,17 @@ jobs:
             Invoke-WebRequest -Uri "http://127.0.0.1:18080/api/reports/counterparties/export/pdf" -OutFile "$env:REESTR_DATA_DIR/smoke.pdf" -TimeoutSec 20
             if ((Get-Item "$env:REESTR_DATA_DIR/smoke.pdf").Length -lt 10000) { throw "PDF smoke test failed" }
             Write-Output "Packaged server, HTML UI and PDF export are healthy."
+          } catch {
+            Write-Output "SMOKE FAILURE: $($_.Exception.Message)"
+            foreach ($log in @($stdout, $stderr, (Join-Path $env:REESTR_DATA_DIR "logs/server.log"))) {
+              if (Test-Path $log) {
+                Write-Output "--- $log ---"
+                Get-Content $log -Tail 100 | Write-Output
+              }
+            }
+            Write-Error "Packaged application smoke test failed: $($_.Exception.Message)"
           } finally {
-            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+            if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
           }
 
       - name: Install Inno Setup
