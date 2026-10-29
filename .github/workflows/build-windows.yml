@@ -56,8 +56,8 @@ jobs:
               if ($process.HasExited) { throw "Packaged server exited during startup with code $($process.ExitCode)" }
             }
             if (-not $healthy) { throw "Packaged server did not become healthy" }
-            $home = Invoke-WebRequest -Uri "http://127.0.0.1:18080/" -TimeoutSec 10
-            if ($home.Content -notmatch "Реестр договоров") { throw "HTML UI was not packaged" }
+            $homeResponse = Invoke-WebRequest -Uri "http://127.0.0.1:18080/" -TimeoutSec 10
+            if ($homeResponse.Content -notmatch "Реестр договоров") { throw "HTML UI was not packaged" }
             Invoke-WebRequest -Uri "http://127.0.0.1:18080/api/reports/counterparties/export/pdf" -OutFile "$env:REESTR_DATA_DIR/smoke.pdf" -TimeoutSec 20
             if ((Get-Item "$env:REESTR_DATA_DIR/smoke.pdf").Length -lt 10000) { throw "PDF smoke test failed" }
             Write-Output "Packaged server, HTML UI and PDF export are healthy."
