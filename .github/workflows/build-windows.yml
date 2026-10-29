@@ -62,14 +62,21 @@ jobs:
             if ((Get-Item "$env:REESTR_DATA_DIR/smoke.pdf").Length -lt 10000) { throw "PDF smoke test failed" }
             Write-Output "Packaged server, HTML UI and PDF export are healthy."
           } catch {
-            Write-Output "SMOKE FAILURE: $($_.Exception.Message)"
+            $failure = $_.Exception.Message
+            Write-Output "SMOKE FAILURE: $failure"
+            Write-Output "::error::Packaged application smoke test: $failure"
             foreach ($log in @($stdout, $stderr, (Join-Path $env:REESTR_DATA_DIR "logs/server.log"))) {
               if (Test-Path $log) {
                 Write-Output "--- $log ---"
-                Get-Content $log -Tail 100 | Write-Output
+                $lines = Get-Content $log -Tail 30
+                $lines | Write-Output
+                if ($lines) {
+                  $annotation = (($lines -join "`n") -replace "%", "%25" -replace "`r", "" -replace "`n", "%0A")
+                  Write-Output "::warning::$log%0A$annotation"
+                }
               }
             }
-            Write-Error "Packaged application smoke test failed: $($_.Exception.Message)"
+            Write-Error "Packaged application smoke test failed: $failure"
           } finally {
             if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
           }
