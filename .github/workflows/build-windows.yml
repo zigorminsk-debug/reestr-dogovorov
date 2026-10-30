@@ -1,0 +1,116 @@
+name: Windows Setup
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    name: Tests, server smoke test and Setup.exe
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+
+      - name: Run tests
+        shell: pwsh
+        run: python -m pytest
+
+      - name: Build Windows server and launcher
+        shell: pwsh
+        run: python -m PyInstaller --noconfirm --clean packaging/ReestrDogovorov.spec
+
+      - name: Smoke test packaged application
+        shell: pwsh
+        env:
+          REESTR_DATA_DIR: ${{ runner.temp }}/ReestrDogovorovSmoke
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:REESTR_DATA_DIR | Out-Null
+          $stdout = Join-Path $env:REESTR_DATA_DIR "smoke.stdout.log"
+          $stderr = Join-Path $env:REESTR_DATA_DIR "smoke.stderr.log"
+          $process = $null
+          try {
+            $process = Start-Process -FilePath "$PWD/dist/ReestrDogovorov/ReestrDogovorov.exe" -ArgumentList "--serve", "--host", "127.0.0.1", "--port", "18080", "--no-browser" -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+            $healthy = $false
+            for ($attempt = 0; $attempt -lt 45; $attempt++) {
+              Start-Sleep -Seconds 1
+              try {
+                $health = Invoke-RestMethod -Uri "http://127.0.0.1:18080/api/health" -TimeoutSec 3
+                if ($health.ok) { $healthy = $true; break }
+              } catch { }
+              if ($process.HasExited) { throw "Packaged server exited during startup with code $($process.ExitCode)" }
+            }
+            if (-not $healthy) { throw "Packaged server did not become healthy" }
+            $homeResponse = Invoke-WebRequest -Uri "http://127.0.0.1:18080/" -TimeoutSec 10
+            if ($homeResponse.Content -notmatch "Копии и восстановление") { throw "HTML UI was not packaged" }
+            $backup = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:18080/api/backups/create" -ContentType "application/json" -Body "{}"
+            if (-not $backup.id) { throw "Backup creation smoke test failed" }
+            $restoreBody = @{ backup_id = $backup.id; confirmation = "ВОССТАНОВИТЬ" } | ConvertTo-Json
+            $restored = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:18080/api/backups/restore" -ContentType "application/json; charset=utf-8" -Body $restoreBody
+            if (-not $restored.ok) { throw "Database restore smoke test failed" }
+            Invoke-WebRequest -Uri "http://127.0.0.1:18080/api/reports/counterparties/export/pdf" -OutFile "$env:REESTR_DATA_DIR/smoke.pdf" -TimeoutSec 20
+            if ((Get-Item "$env:REESTR_DATA_DIR/smoke.pdf").Length -lt 10000) { throw "PDF smoke test failed" }
+            Write-Output "Packaged server, HTML UI, backup/restore and PDF export are healthy."
+          } catch {
+            $failure = $_.Exception.Message
+            Write-Output "SMOKE FAILURE: $failure"
+            Write-Output "::error::Packaged application smoke test: $failure"
+            foreach ($log in @($stdout, $stderr, (Join-Path $env:REESTR_DATA_DIR "logs/server.log"))) {
+              if (Test-Path $log) {
+                Write-Output "--- $log ---"
+                $lines = Get-Content $log -Tail 30
+                $lines | Write-Output
+                if ($lines) {
+                  $annotation = (($lines -join "`n") -replace "%", "%25" -replace "`r", "" -replace "`n", "%0A")
+                  Write-Output "::warning::$log%0A$annotation"
+                }
+              }
+            }
+            Write-Error "Packaged application smoke test failed: $failure"
+          } finally {
+            if ($process -and -not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          }
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
+      - name: Compile Setup.exe
+        shell: pwsh
+        run: |
+          $version = python -c "from reestr import __version__; print(__version__)"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" packaging/installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
+
+      - name: Create checksum
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist/ReestrDogovorov-Setup-*.exe | Select-Object -First 1
+          $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path "$($setup.FullName).sha256" -Value "$hash  $($setup.Name)" -Encoding ascii
+          Get-ChildItem dist/ReestrDogovorov-Setup-* | Select-Object Name, Length
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReestrDogovorov-Windows-Setup
+          path: |
+            dist/ReestrDogovorov-Setup-*.exe
+            dist/ReestrDogovorov-Setup-*.exe.sha256
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local application data (never overwrite or commit the shared database)
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite3
+logs/
+backups/
+exports/
+
+# Build output
+build/
+dist/
+*.exe
+*.zip
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+~$*.xlsx
+~$*.xls

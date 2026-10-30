@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#153f4d">
+  <title>Реестр договоров</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar no-print">
+      <div class="brand">
+        <img src="/static/favicon.svg" alt="" width="42" height="42">
+        <div><strong>Реестр</strong><span>договоров</span></div>
+      </div>
+      <nav class="main-nav" aria-label="Основная навигация">
+        <button class="nav-item active" data-page="dashboard"><span class="nav-icon">▦</span><span>Главная</span></button>
+        <button class="nav-item" data-page="contracts"><span class="nav-icon">▤</span><span>Договоры</span></button>
+        <button class="nav-item" data-page="reports"><span class="nav-icon">▥</span><span>Отчёты</span></button>
+        <button class="nav-item" data-page="import"><span class="nav-icon">⇥</span><span>Импорт Excel</span></button>
+        <button class="nav-item" data-page="backups"><span class="nav-icon">⛉</span><span>Копии и восстановление</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="connection"><span id="connection-dot" class="status-dot"></span><span id="connection-text">Подключение…</span></div>
+        <a class="backup-link" href="/api/backup" download>Скачать резервную копию</a>
+        <span id="app-version" class="version"></span>
+      </div>
+    </aside>
+
+    <div class="main-shell">
+      <header class="topbar no-print">
+        <div>
+          <h1 id="page-title">Главная</h1>
+          <p id="page-subtitle">Контроль договоров и оплат в одном окне</p>
+        </div>
+        <button id="operator-button" class="operator-button" title="Изменить имя пользователя">
+          <span class="operator-avatar" id="operator-avatar">—</span>
+          <span><small>Пользователь</small><strong id="operator-name">Не указан</strong></span>
+          <span aria-hidden="true">⌄</span>
+        </button>
+      </header>
+
+      <main>
+        <section id="page-dashboard" class="page active" aria-labelledby="page-title">
+          <div class="welcome-panel no-print">
+            <div><span class="eyebrow">ОБЩИЙ СЕТЕВОЙ РЕЕСТР</span><h2>Добрый день!</h2><p>Актуальные данные по договорам, счетам и срокам оплаты.</p></div>
+            <button class="button primary" data-action="new-contract"><span>＋</span> Новый договор</button>
+          </div>
+
+          <div class="metric-grid">
+            <article class="metric-card"><div class="metric-icon blue">▤</div><div><span>Всего записей</span><strong id="metric-contracts">—</strong><small id="metric-counterparties">— контрагентов</small></div></article>
+            <article class="metric-card"><div class="metric-icon amber">◷</div><div><span>Ожидают оплаты</span><strong id="metric-unpaid">—</strong><small id="metric-due-soon">— в ближайшие 7 дней</small></div></article>
+            <article class="metric-card clickable" data-action="show-overdue"><div class="metric-icon red">!</div><div><span>Просрочено</span><strong id="metric-overdue">—</strong><small id="metric-paid-late">— оплачено позже срока</small></div></article>
+            <article class="metric-card amounts-card"><div class="metric-icon green">Σ</div><div><span>К оплате по валютам</span><div id="metric-outstanding" class="metric-amounts">—</div><small>неоплаченные счета</small></div></article>
+          </div>
+
+          <div class="dashboard-grid">
+            <article class="panel">
+              <div class="panel-header"><div><h3>Ближайшие оплаты</h3><p>Плановые сроки по неоплаченным счетам</p></div><button class="text-button no-print" data-action="show-payments">Все сроки →</button></div>
+              <div class="table-wrap"><table><thead><tr><th>Контрагент</th><th>Счёт</th><th>Срок</th><th class="number">Сумма</th></tr></thead><tbody id="dashboard-upcoming"></tbody></table></div>
+              <div id="upcoming-empty" class="empty-state compact" hidden>Нет предстоящих оплат с указанным сроком</div>
+            </article>
+            <article class="panel">
+              <div class="panel-header"><div><h3>Требуют внимания</h3><p>Неоплаченные счета с прошедшим сроком</p></div><button class="text-button no-print" data-action="show-overdue">Отчёт →</button></div>
+              <div class="table-wrap"><table><thead><tr><th>Контрагент</th><th>Счёт</th><th>Просрочка</th><th class="number">Сумма</th></tr></thead><tbody id="dashboard-overdue"></tbody></table></div>
+              <div id="overdue-empty" class="empty-state compact" hidden>Просроченных неоплаченных счетов нет</div>
+            </article>
+          </div>
+
+          <article class="panel history-panel">
+            <div class="panel-header"><div><h3>Последние изменения</h3><p>Кто и когда работал с общей базой</p></div><button class="icon-button no-print" data-action="refresh" title="Обновить">↻</button></div>
+            <div id="dashboard-history" class="history-list"></div>
+          </article>
+        </section>
+
+        <section id="page-contracts" class="page" hidden>
+          <div class="section-actions no-print">
+            <button class="button primary" data-action="new-contract">＋ Новый договор</button>
+            <button class="button secondary" data-action="refresh-contracts">↻ Обновить</button>
+          </div>
+          <form id="contract-filters" class="filter-bar no-print">
+            <label class="search-field"><span>⌕</span><input type="search" name="q" placeholder="Контрагент, договор, счёт, АВР…" autocomplete="off"></label>
+            <select name="counterparty" data-counterparties aria-label="Контрагент"><option value="">Все контрагенты</option></select>
+            <select name="status" aria-label="Статус оплаты">
+              <option value="">Любой статус</option><option value="unpaid">Не оплачен</option><option value="paid">Оплачен</option><option value="overdue_unpaid">Просрочено</option><option value="paid_late">Оплачен с просрочкой</option><option value="due_soon">Оплата в ближайшие 7 дней</option>
+            </select>
+            <select name="currency" data-currencies aria-label="Валюта"><option value="">Все валюты</option></select>
+            <button class="button secondary small" type="submit">Найти</button>
+            <button class="text-button" type="button" data-action="reset-contract-filters">Сбросить</button>
+          </form>
+          <article class="panel registry-panel">
+            <div class="panel-header"><div><h3>Реестр договоров</h3><p id="contracts-count">Загрузка…</p></div></div>
+            <div class="table-wrap registry-table"><table><thead><tr><th>Контрагент / договор</th><th>Счёт / заявка</th><th>АВР</th><th>Срок оплаты</th><th class="number">Сумма</th><th>Статус</th><th class="actions-column no-print"></th></tr></thead><tbody id="contracts-table"></tbody></table></div>
+            <div id="contracts-empty" class="empty-state" hidden><strong>Записи не найдены</strong><span>Измените фильтры или зарегистрируйте новый договор.</span></div>
+            <div class="pagination no-print"><button id="contracts-prev" class="button secondary small">← Назад</button><span id="contracts-page">1 / 1</span><button id="contracts-next" class="button secondary small">Вперёд →</button></div>
+          </article>
+        </section>
+
+        <section id="page-reports" class="page" hidden>
+          <div class="report-tabs no-print" role="tablist" aria-label="Вид отчёта">
+            <button class="report-tab active" data-report="counterparties">По контрагентам</button>
+            <button class="report-tab" data-report="payments">По срокам оплаты</button>
+            <button class="report-tab" data-report="overdue">Просроченные оплаты</button>
+          </div>
+          <form id="report-filters" class="filter-bar report-controls no-print">
+            <label><span>Период с</span><input type="date" name="date_from"></label>
+            <label><span>по</span><input type="date" name="date_to"></label>
+            <select name="counterparty" data-counterparties aria-label="Контрагент"><option value="">Все контрагенты</option></select>
+            <select name="currency" data-currencies aria-label="Валюта"><option value="">Все валюты</option></select>
+            <select name="status" id="report-status" aria-label="Статус"><option value="">Все записи</option><option value="unpaid">Только неоплаченные</option><option value="paid">Только оплаченные</option><option value="overdue">Все просрочки</option><option value="overdue_unpaid">Непогашенная просрочка</option><option value="paid_late">Оплачено позже срока</option></select>
+            <button class="button primary" type="submit">Сформировать</button>
+          </form>
+          <div class="export-bar no-print">
+            <span>Сохранить отчёт:</span>
+            <button class="button secondary small" data-export="xls">Excel .xls</button>
+            <button class="button secondary small" data-export="docx">Word .docx</button>
+            <button class="button secondary small" data-export="pdf">PDF</button>
+            <button class="button secondary small" data-action="print-report">⎙ Печать</button>
+            <span id="report-loading" class="inline-status" hidden>Формирование…</span>
+          </div>
+          <div id="report-print-area" class="report-print-area">
+            <article class="panel report-panel">
+              <div class="report-heading"><div><span class="eyebrow">РЕЕСТР ДОГОВОРОВ</span><h2 id="report-title">Отчёт по контрагентам</h2><p id="report-meta">Настройте параметры и сформируйте отчёт</p></div></div>
+              <div id="report-totals" class="report-totals"></div>
+              <div class="table-wrap report-table"><table><thead id="report-head"></thead><tbody id="report-body"></tbody></table></div>
+              <div id="report-empty" class="empty-state" hidden><strong>Нет данных для отчёта</strong><span>Измените период или фильтры.</span></div>
+            </article>
+          </div>
+        </section>
+
+        <section id="page-import" class="page" hidden>
+          <div class="import-layout">
+            <article class="panel import-main">
+              <div class="panel-header"><div><span class="eyebrow">ШАГ 1</span><h2>Выберите Excel-файл</h2><p>Подходят .xlsx и .xls с заголовками как в «Реестр договоров1.xlsx».</p></div></div>
+              <label id="import-dropzone" class="dropzone">
+                <input id="import-file" type="file" accept=".xlsx,.xls" hidden>
+                <span class="dropzone-icon">⇧</span>
+                <strong>Перетащите файл сюда или нажмите для выбора</strong>
+                <span>До 15 МБ, не более 10 000 строк</span>
+              </label>
+              <div id="import-selected" class="selected-file" hidden><span class="file-icon">XLS</span><div><strong id="import-filename"></strong><small id="import-filesize"></small></div><button class="icon-button" data-action="clear-import" title="Убрать файл">×</button></div>
+              <div class="import-actions no-print"><button id="import-preview-button" class="button primary" data-action="preview-import" disabled>Предпросмотр</button><a class="button secondary" href="/api/import/template" download>Скачать шаблон</a></div>
+              <div id="import-message" class="message" hidden></div>
+            </article>
+            <aside class="panel import-help">
+              <span class="eyebrow">КАК ЭТО РАБОТАЕТ</span>
+              <ol><li><strong>Проверьте предпросмотр</strong><span>Программа найдет заголовки и сопоставит колонки автоматически.</span></li><li><strong>Исправьте ошибки</strong><span>Строки с ошибками будут показаны и не попадут в базу.</span></li><li><strong>Подтвердите импорт</strong><span>Корректные строки добавятся одной транзакцией с записью в истории.</span></li></ol>
+              <p class="help-note">Повторная загрузка того же самого файла блокируется, чтобы не создавать дубликаты.</p>
+            </aside>
+          </div>
+          <article id="import-preview" class="panel import-preview" hidden>
+            <div class="panel-header"><div><span class="eyebrow">ШАГ 2</span><h2>Предпросмотр импорта</h2><p id="import-summary"></p></div><button id="import-commit-button" class="button primary no-print" data-action="commit-import">Импортировать</button></div>
+            <div id="import-existing" class="message warning" hidden></div>
+            <div class="table-wrap"><table><thead><tr><th>Строка</th><th>Контрагент</th><th>Договор</th><th>Счёт</th><th>Срок оплаты</th><th class="number">Сумма</th><th>Проверка</th></tr></thead><tbody id="import-preview-table"></tbody></table></div>
+          </article>
+        </section>
+
+        <section id="page-backups" class="page" hidden>
+          <div class="backup-layout">
+            <article class="panel">
+              <div class="panel-header"><div><span class="eyebrow">АВТОМАТИЧЕСКИ</span><h2>Копии по расписанию</h2><p>Расписание работает, пока запущена серверная часть.</p></div></div>
+              <form id="backup-settings-form" class="backup-settings-form">
+                <label class="backup-toggle span-full"><input type="checkbox" name="enabled"><span><strong>Создавать резервную копию ежедневно</strong><small>Если сервер был выключен, пропущенная копия создаётся после запуска в тот же день.</small></span></label>
+                <label><span>Время на сервере</span><input type="time" name="time" required></label>
+                <label><span>Хранить копий</span><input type="number" name="retention" min="1" max="100" required><small>От 1 до 100 более новых файлов</small></label>
+                <label class="span-full"><span>Каталог на сервере или сетевом хранилище</span><input name="directory" required placeholder="D:\Backups\Reestr или \\NAS\Share\Reestr"><small>Это путь на сервере, а не на вашем компьютере. Для сетевой папки нужны права записи у учётной записи SYSTEM.</small></label>
+                <div class="span-full"><button type="submit" id="save-backup-settings" class="button primary">Сохранить расписание</button></div>
+              </form>
+              <div id="backup-schedule-status" class="backup-schedule-status"></div>
+            </article>
+
+            <aside class="panel backup-instructions">
+              <span class="eyebrow">ИНСТРУКЦИЯ</span><h2>Копирование и восстановление</h2>
+              <ol>
+                <li><strong>Настройте расписание</strong><span>Укажите каталог, время и число копий. Старые файлы сверх лимита удаляются автоматически.</span></li>
+                <li><strong>Скачайте копию при необходимости</strong><span>«Создать копию сейчас» сохраняет файл в указанный каталог. «Скачать текущую базу» дополнительно сохраняет копию на ваш компьютер.</span></li>
+                <li><strong>Восстановите базу</strong><span>Нажмите «Восстановить» в строке нужной копии или выберите ранее скачанный .db-файл ниже.</span></li>
+                <li><strong>Подтвердите операцию</strong><span>Введите ВОССТАНОВИТЬ. Останавливать сервер вручную не нужно: запросы пользователей временно приостановятся.</span></li>
+              </ol>
+              <p class="help-note">Перед любой заменой программа автоматически создаёт страховочную копию текущей базы в папке backups\safety. После восстановления появятся данные на дату выбранной копии.</p>
+            </aside>
+          </div>
+
+          <article class="panel backup-actions-panel">
+            <div class="panel-header"><div><span class="eyebrow">ВРУЧНУЮ</span><h2>Резервные копии</h2><p>Создание не прерывает работу пользователей.</p></div><div class="backup-actions"><button class="button primary" data-action="create-backup">＋ Создать копию сейчас</button><a class="button secondary" href="/api/backup" download>Скачать текущую базу</a><button class="button secondary" data-action="refresh-backups">↻ Обновить список</button></div></div>
+            <div id="backup-message" class="message" hidden></div>
+            <div class="table-wrap backup-table"><table><thead><tr><th>Файл</th><th>Расположение</th><th>Создан</th><th class="number">Размер</th><th class="actions-column"></th></tr></thead><tbody id="backups-table"></tbody></table></div>
+            <div id="backups-empty" class="empty-state" hidden><strong>Резервных копий пока нет</strong><span>Создайте копию вручную или включите расписание.</span></div>
+          </article>
+
+          <article class="panel restore-upload-panel">
+            <div><span class="eyebrow">ИЗ СКАЧАННОГО ФАЙЛА</span><h2>Восстановить базу с этого компьютера</h2><p>Выберите файл <code>reestr_backup_….db</code>, ранее скачанный из программы. Файл будет проверен перед заменой.</p></div>
+            <div class="restore-upload-controls"><input id="restore-file" type="file" accept=".db,.sqlite,.sqlite3"><button id="restore-upload-button" class="button danger-solid" data-action="choose-restore-upload" disabled>Загрузить и восстановить</button></div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog id="contract-dialog" class="contract-dialog">
+    <form id="contract-form">
+      <div class="dialog-header"><div><span class="eyebrow">КАРТОЧКА ЗАПИСИ</span><h2 id="contract-dialog-title">Новый договор</h2></div><button type="button" class="icon-button" data-action="close-contract" aria-label="Закрыть">×</button></div>
+      <div class="dialog-body">
+        <input type="hidden" name="id"><input type="hidden" name="version">
+        <fieldset><legend>Контрагент и договор</legend><div class="form-grid cols-3">
+          <label><span>Тип контрагента</span><select name="party_type"><option value="К">К — клиент</option><option value="П">П — подрядчик</option></select></label>
+          <label class="span-2"><span>Наименование контрагента *</span><input name="counterparty" list="counterparty-list" maxlength="300" required autocomplete="off"></label>
+          <label><span>Страна</span><input name="country" maxlength="120" value="РФ"></label>
+          <label><span>Номер договора *</span><input name="contract_number" maxlength="160" required></label>
+          <label><span>Дата договора</span><input type="date" name="contract_date"></label>
+        </div></fieldset>
+        <fieldset><legend>Заявка и счёт</legend><div class="form-grid cols-3">
+          <label><span>Номер заявки</span><input name="request_number" maxlength="200" placeholder="или «без заявки»"></label>
+          <label><span>Дата заявки</span><input type="date" name="request_date"></label>
+          <span></span>
+          <label><span>Номер счёта</span><input name="invoice_number" maxlength="200"></label>
+          <label><span>Дата счёта</span><input type="date" name="invoice_date"></label>
+        </div></fieldset>
+        <fieldset><legend>Оплата</legend><div class="form-grid cols-3">
+          <label><span>Статус счёта</span><select name="invoice_status"><option value="Н">Н — не оплачен</option><option value="О">О — оплачен</option></select></label>
+          <label><span>Срок оплаты</span><input type="date" name="payment_due_date"></label>
+          <label><span>Фактическая дата оплаты</span><input type="date" name="payment_date"></label>
+          <label><span>Условия оплаты (если текстом)</span><input name="payment_terms" maxlength="300" placeholder="Например: 30 дней"></label>
+          <label class="span-2"><span>Номер п/п, сумма оплаты</span><input name="payment_reference" maxlength="500"></label>
+        </div></fieldset>
+        <fieldset><legend>АВР и дополнительные сведения</legend><div class="form-grid cols-3">
+          <label><span>Номер АВР</span><input name="avr_number" maxlength="160"></label>
+          <label><span>Дата АВР</span><input type="date" name="avr_date"></label>
+          <label><span>Валюта</span><input name="currency" list="currency-list" value="RUB" maxlength="3" required></label>
+          <label><span>Сумма АВР</span><input type="number" name="avr_amount" min="0" step="0.01" value="0"></label>
+          <label><span>В том числе НДС</span><input type="number" name="vat_amount" min="0" step="0.01" value="0"></label>
+          <label><span>Под клиента</span><input name="client" maxlength="300"></label>
+          <label class="span-full"><span>Примечания</span><textarea name="notes" rows="3" maxlength="4000"></textarea></label>
+        </div></fieldset>
+        <div id="contract-form-message" class="message error" hidden></div>
+      </div>
+      <div class="dialog-footer no-print"><button id="delete-contract-button" type="button" class="button danger ghost" data-action="delete-contract" hidden>Удалить</button><span class="record-meta" id="record-meta"></span><button type="button" class="button secondary" data-action="close-contract">Отмена</button><button type="submit" class="button primary" id="save-contract-button">Сохранить</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="operator-dialog" class="small-dialog">
+    <form id="operator-form">
+      <div class="dialog-header"><div><h2>Кто работает в программе?</h2><p>Имя сохраняется в истории изменений.</p></div></div>
+      <div class="dialog-body"><label><span>Ваше имя и фамилия</span><input name="operator" maxlength="120" required autocomplete="name" placeholder="Например: Иван Иванов"></label></div>
+      <div class="dialog-footer"><button type="submit" class="button primary">Продолжить</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="conflict-dialog" class="small-dialog">
+    <div class="dialog-header"><div><h2>Запись уже изменена</h2><p>Другой пользователь сохранил новую версию, пока вы редактировали карточку.</p></div></div>
+    <div class="dialog-body"><p>Ваши несохранённые данные не записаны. Загрузите актуальную версию и повторите изменения — это защищает от потери чужой работы.</p></div>
+    <div class="dialog-footer"><button class="button secondary" data-action="close-conflict">Закрыть</button><button class="button primary" data-action="reload-conflict">Загрузить актуальную версию</button></div>
+  </dialog>
+
+  <dialog id="restore-dialog" class="small-dialog restore-dialog">
+    <form id="restore-form">
+      <div class="dialog-header"><div><span class="eyebrow">ВОССТАНОВЛЕНИЕ БАЗЫ</span><h2>Заменить текущие данные?</h2></div><button type="button" class="icon-button" data-action="close-restore" aria-label="Закрыть">×</button></div>
+      <div class="dialog-body">
+        <p>Источник: <strong id="restore-source-name"></strong></p>
+        <div class="message warning">Текущие договоры будут заменены данными из копии. Перед заменой программа автоматически создаст страховочную копию текущей базы. Во время операции остальные пользователи должны подождать.</div>
+        <label><span>Для подтверждения введите <strong>ВОССТАНОВИТЬ</strong></span><input name="confirmation" required autocomplete="off" spellcheck="false" placeholder="ВОССТАНОВИТЬ"></label>
+        <div id="restore-message" class="message error" hidden></div>
+      </div>
+      <div class="dialog-footer"><button type="button" class="button secondary" data-action="close-restore">Отмена</button><button type="submit" id="restore-confirm-button" class="button danger-solid" disabled>Восстановить базу</button></div>
+    </form>
+  </dialog>
+
+  <datalist id="counterparty-list"></datalist><datalist id="currency-list"><option value="RUB"></option><option value="BYN"></option><option value="USD"></option><option value="EUR"></option><option value="CNY"></option></datalist>
+  <div id="toast" class="toast no-print" role="status" aria-live="polite"></div>
+</body>
+</html>
