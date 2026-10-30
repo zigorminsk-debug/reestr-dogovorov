@@ -14,7 +14,7 @@ from .maintenance import DatabaseGate, MaintenanceBlocked
 from .resources import resource_path
 
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 
 def create_app(test_config: dict | None = None) -> Flask:
@@ -45,9 +45,10 @@ def create_app(test_config: dict | None = None) -> Flask:
         handler.setLevel(logging.INFO)
         app.logger.addHandler(handler)
 
-    from .routes import backups, contracts, imports, reports, system
+    from .routes import admin, backups, contracts, imports, reports, system
 
     app.register_blueprint(system.bp)
+    app.register_blueprint(admin.bp)
     app.register_blueprint(contracts.bp)
     app.register_blueprint(imports.bp)
     app.register_blueprint(reports.bp)

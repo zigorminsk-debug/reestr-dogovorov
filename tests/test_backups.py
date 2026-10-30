@@ -31,7 +31,7 @@ def test_settings_retention_and_scheduled_backup(app, client, headers, tmp_path)
     )
     assert saved.status_code == 200
     assert saved.json["directory"] == str(custom)
-    assert saved.json["updated_by"] == "Иван Тестовый"
+    assert saved.json["updated_by"] == "admin"
     assert (Path(app.config["DATA_DIR"]) / "backup_settings.json").exists()
 
     for _ in range(3):
@@ -85,7 +85,7 @@ def test_restore_from_list_creates_safety_copy_and_keeps_settings(
     )
     assert restored.status_code == 200, restored.json
     assert restored.json["contracts"] == 1
-    assert restored.json["restored_by"] == "Иван Тестовый"
+    assert restored.json["restored_by"] == "admin"
     assert app.extensions["database_gate"].is_maintenance is False
 
     items = client.get("/api/contracts").json["items"]

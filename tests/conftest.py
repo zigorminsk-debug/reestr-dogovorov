@@ -6,16 +6,33 @@ from urllib.parse import quote
 import pytest
 
 from reestr import create_app
+from reestr.auth import initialize_admin
+
+
+TEST_ADMIN_USERNAME = "admin"
+TEST_ADMIN_PASSWORD = "TestPassword!123"
 
 
 @pytest.fixture()
 def app(tmp_path):
     application = create_app({"TESTING": True, "DATA_DIR": str(tmp_path / "separate-data")})
+    initialize_admin(application.config["DATA_DIR"], TEST_ADMIN_USERNAME, TEST_ADMIN_PASSWORD)
     yield application
 
 
 @pytest.fixture()
 def client(app):
+    test_client = app.test_client()
+    response = test_client.post(
+        "/api/admin/login",
+        json={"username": TEST_ADMIN_USERNAME, "password": TEST_ADMIN_PASSWORD},
+    )
+    assert response.status_code == 200
+    return test_client
+
+
+@pytest.fixture()
+def anonymous_client(app):
     return app.test_client()
 
 

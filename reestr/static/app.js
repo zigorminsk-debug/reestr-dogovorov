@@ -17,6 +17,7 @@ const state = {
   backups: new Map(),
   pendingRestore: null,
   restoring: false,
+  admin: { configured: false, authenticated: false, username: null },
   toastTimer: null,
 };
 
@@ -123,7 +124,11 @@ async function api(path, options = {}) {
     const response = await fetch(path, { ...options, headers, body });
     const contentType = response.headers.get("Content-Type") || "";
     const data = contentType.includes("json") ? await response.json() : { error: await response.text() };
-    if (!response.ok) throw new ApiError(data.error || `Ошибка сервера (${response.status})`, response.status, data);
+    if (!response.ok) {
+      if (data.code === "admin_required") applyAdmin({ configured: true, authenticated: false, username: null });
+      if (data.code === "admin_not_configured") applyAdmin({ configured: false, authenticated: false, username: null });
+      throw new ApiError(data.error || `Ошибка сервера (${response.status})`, response.status, data);
+    }
     return data;
   } catch (error) {
     if (error instanceof ApiError) throw error;
@@ -143,6 +148,78 @@ function requireOperator() {
   $("#operator-dialog").showModal();
   toast("Сначала укажите ваше имя", true);
   return false;
+}
+
+function applyAdmin(session) {
+  state.admin = {
+    configured: !!session.configured,
+    authenticated: !!session.authenticated,
+    username: session.username || null,
+  };
+  const authenticated = state.admin.authenticated;
+  $("#backups-nav").hidden = !authenticated;
+  $("#sidebar-backup-link").hidden = !authenticated;
+  $("#admin-button").classList.toggle("authenticated", authenticated);
+  $("#admin-button-text").textContent = authenticated ? `Админ: ${state.admin.username}` : "Администратор";
+  $("#admin-login-view").hidden = authenticated;
+  $("#admin-profile-view").hidden = !authenticated;
+  $("#admin-not-configured").hidden = state.admin.configured;
+  if (authenticated) $("#admin-profile-name").textContent = state.admin.username;
+  if (!authenticated && state.page === "backups") showPage("dashboard");
+}
+
+async function loadAdminSession() {
+  try {
+    applyAdmin(await api("/api/admin/session"));
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function openAdmin() {
+  if (!state.admin.authenticated) {
+    const form = $("#admin-login-form");
+    form.reset();
+    $("#admin-login-message").hidden = true;
+  }
+  if (!$("#admin-dialog").open) $("#admin-dialog").showModal();
+  if (!state.admin.authenticated) setTimeout(() => $("#admin-login-form").elements.password.focus(), 50);
+}
+
+async function loginAdmin(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = $("#admin-login-submit");
+  const message = $("#admin-login-message");
+  button.disabled = true;
+  message.hidden = true;
+  try {
+    const result = await api("/api/admin/login", {
+      method: "POST",
+      body: { username: form.elements.username.value.trim(), password: form.elements.password.value },
+    });
+    applyAdmin({ configured: true, authenticated: true, username: result.username });
+    form.reset();
+    $("#admin-dialog").close();
+    toast("Вход администратора выполнен");
+    showPage("backups");
+  } catch (error) {
+    message.textContent = error.message;
+    message.hidden = false;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function logoutAdmin() {
+  try {
+    await api("/api/admin/logout", { method: "POST", body: {} });
+    applyAdmin({ configured: state.admin.configured, authenticated: false, username: null });
+    $("#admin-dialog").close();
+    toast("Вы вышли из административной сессии");
+  } catch (error) {
+    toast(error.message, true);
+  }
 }
 
 async function loadHealth(silent = false) {
@@ -193,6 +270,11 @@ async function loadMeta() {
 
 function showPage(page) {
   if (!PAGE_INFO[page]) return;
+  if (page === "backups" && !state.admin.authenticated) {
+    openAdmin();
+    toast("Для управления копиями войдите как администратор", true);
+    return;
+  }
   state.page = page;
   $$(".page").forEach((section) => {
     const active = section.id === `page-${page}`;
@@ -616,7 +698,6 @@ async function loadBackupSettings() {
 
 async function saveBackupSettings(event) {
   event.preventDefault();
-  if (!requireOperator()) return;
   const form = event.currentTarget;
   const button = $("#save-backup-settings");
   button.disabled = true;
@@ -673,7 +754,6 @@ async function createBackup() {
 }
 
 function openRestore(source) {
-  if (!requireOperator()) return;
   state.pendingRestore = source;
   const form = $("#restore-form");
   form.reset();
@@ -690,7 +770,7 @@ function closeRestore() {
 
 async function restoreDatabase(event) {
   event.preventDefault();
-  if (!requireOperator() || !state.pendingRestore || state.restoring) return;
+  if (!state.pendingRestore || state.restoring) return;
   const form = event.currentTarget;
   const confirmation = form.elements.confirmation.value.trim();
   if (confirmation.toUpperCase() !== "ВОССТАНОВИТЬ") return;
@@ -738,6 +818,9 @@ async function refreshAll(showMessage = true) {
 
 function bindEvents() {
   $$(".nav-item").forEach((button) => button.addEventListener("click", () => showPage(button.dataset.page)));
+  $("#admin-button").addEventListener("click", openAdmin);
+  $("#developer-button").addEventListener("click", () => $("#developer-dialog").showModal());
+  $("#admin-login-form").addEventListener("submit", loginAdmin);
   $("#contract-form").addEventListener("submit", saveContract);
   $("#contract-filters").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -783,6 +866,10 @@ function bindEvents() {
     const target = event.target.closest("[data-action]");
     if (!target) return;
     const actions = {
+      "close-admin": () => $("#admin-dialog").close(),
+      "admin-logout": logoutAdmin,
+      "open-backup-admin": () => { $("#admin-dialog").close(); showPage("backups"); },
+      "close-developer": () => $("#developer-dialog").close(),
       "new-contract": () => { if (requireOperator()) openContract(); },
       "close-contract": () => $("#contract-dialog").close(),
       "delete-contract": deleteContract,
@@ -818,6 +905,7 @@ function bindEvents() {
 async function init() {
   updateOperator();
   bindEvents();
+  await loadAdminSession();
   await Promise.all([loadHealth(true), loadMeta(), loadDashboard(true), loadContracts(true)]);
   if (!state.operator) setTimeout(() => $("#operator-dialog").showModal(), 250);
   setInterval(() => {

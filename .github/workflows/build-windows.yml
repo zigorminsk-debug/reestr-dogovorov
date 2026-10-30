@@ -41,11 +41,19 @@ jobs:
           REESTR_DATA_DIR: ${{ runner.temp }}/ReestrDogovorovSmoke
         run: |
           New-Item -ItemType Directory -Force -Path $env:REESTR_DATA_DIR | Out-Null
+          $executable = "$PWD/dist/ReestrDogovorov/ReestrDogovorov.exe"
+          $bootstrap = Join-Path $env:REESTR_DATA_DIR "bootstrap-admin.json"
+          $credentials = @{ username = "smokeadmin"; password = "SmokePassword!123" } | ConvertTo-Json
+          [System.IO.File]::WriteAllText($bootstrap, $credentials, [System.Text.UTF8Encoding]::new($false))
+          $initArguments = @("--init-admin", "--credentials-file", "`"$bootstrap`"")
+          $initialization = Start-Process -FilePath $executable -ArgumentList $initArguments -WindowStyle Hidden -Wait -PassThru
+          if ($initialization.ExitCode -ne 0) { throw "Packaged administrator initialization failed" }
+          if (Test-Path $bootstrap) { throw "Bootstrap credentials were not removed" }
           $stdout = Join-Path $env:REESTR_DATA_DIR "smoke.stdout.log"
           $stderr = Join-Path $env:REESTR_DATA_DIR "smoke.stderr.log"
           $process = $null
           try {
-            $process = Start-Process -FilePath "$PWD/dist/ReestrDogovorov/ReestrDogovorov.exe" -ArgumentList "--serve", "--host", "127.0.0.1", "--port", "18080", "--no-browser" -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
+            $process = Start-Process -FilePath $executable -ArgumentList "--serve", "--host", "127.0.0.1", "--port", "18080", "--no-browser" -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
             $healthy = $false
             for ($attempt = 0; $attempt -lt 45; $attempt++) {
               Start-Sleep -Seconds 1
@@ -58,14 +66,19 @@ jobs:
             if (-not $healthy) { throw "Packaged server did not become healthy" }
             $homeResponse = Invoke-WebRequest -Uri "http://127.0.0.1:18080/" -TimeoutSec 10
             if ($homeResponse.Content -notmatch "Копии и восстановление") { throw "HTML UI was not packaged" }
-            $backup = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:18080/api/backups/create" -ContentType "application/json" -Body "{}"
+            $unauthorized = Invoke-WebRequest -Method Post -Uri "http://127.0.0.1:18080/api/backups/create" -ContentType "application/json" -Body "{}" -SkipHttpErrorCheck
+            if ($unauthorized.StatusCode -ne 401) { throw "Backup API allowed an anonymous request" }
+            $loginBody = @{ username = "smokeadmin"; password = "SmokePassword!123" } | ConvertTo-Json
+            $login = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:18080/api/admin/login" -ContentType "application/json" -Body $loginBody -SessionVariable adminSession
+            if (-not $login.authenticated) { throw "Administrator login smoke test failed" }
+            $backup = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:18080/api/backups/create" -ContentType "application/json" -Body "{}" -WebSession $adminSession
             if (-not $backup.id) { throw "Backup creation smoke test failed" }
             $restoreBody = @{ backup_id = $backup.id; confirmation = "ВОССТАНОВИТЬ" } | ConvertTo-Json
-            $restored = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:18080/api/backups/restore" -ContentType "application/json; charset=utf-8" -Body $restoreBody
+            $restored = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:18080/api/backups/restore" -ContentType "application/json; charset=utf-8" -Body $restoreBody -WebSession $adminSession
             if (-not $restored.ok) { throw "Database restore smoke test failed" }
             Invoke-WebRequest -Uri "http://127.0.0.1:18080/api/reports/counterparties/export/pdf" -OutFile "$env:REESTR_DATA_DIR/smoke.pdf" -TimeoutSec 20
             if ((Get-Item "$env:REESTR_DATA_DIR/smoke.pdf").Length -lt 10000) { throw "PDF smoke test failed" }
-            Write-Output "Packaged server, HTML UI, backup/restore and PDF export are healthy."
+            Write-Output "Packaged server, HTML UI, administrator authorization, backup/restore and PDF export are healthy."
           } catch {
             $failure = $_.Exception.Message
             Write-Output "SMOKE FAILURE: $failure"

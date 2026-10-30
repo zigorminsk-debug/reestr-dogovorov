@@ -3,8 +3,9 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify, request, send_file
+from flask import Blueprint, current_app, g, jsonify, request, send_file
 
+from ..auth import require_admin
 from ..backups import (
     BackupError,
     create_backup,
@@ -16,7 +17,6 @@ from ..backups import (
     save_backup_settings,
     validate_backup,
 )
-from .contracts import operator_name
 
 
 bp = Blueprint("backups", __name__, url_prefix="/api")
@@ -37,6 +37,7 @@ def require_confirmation(value: object) -> None:
 
 
 @bp.get("/backup-settings")
+@require_admin
 def get_backup_settings():
     settings = load_backup_settings(data_dir())
     settings["next_run_at"] = next_scheduled_run(settings)
@@ -45,19 +46,22 @@ def get_backup_settings():
 
 
 @bp.put("/backup-settings")
+@require_admin
 def put_backup_settings():
     payload = request.get_json(silent=True) or {}
-    settings = save_backup_settings(data_dir(), payload, operator_name())
+    settings = save_backup_settings(data_dir(), payload, g.admin_user)
     settings["next_run_at"] = next_scheduled_run(settings)
     return jsonify(settings)
 
 
 @bp.get("/backups")
+@require_admin
 def backups_list():
     return jsonify({"items": list_backups(data_dir())})
 
 
 @bp.post("/backups/create")
+@require_admin
 def backup_create():
     settings = load_backup_settings(data_dir())
     result = create_backup(
@@ -70,6 +74,7 @@ def backup_create():
 
 
 @bp.get("/backups/download")
+@require_admin
 def backup_download_existing():
     identifier = request.args.get("id", "")
     path = find_backup(data_dir(), identifier)
@@ -77,6 +82,7 @@ def backup_download_existing():
 
 
 @bp.get("/backup")
+@require_admin
 def backup_download_new():
     # Kept for the sidebar link and backward compatibility with version 1.0.
     result = create_backup(
@@ -94,12 +100,13 @@ def backup_download_new():
 
 
 @bp.post("/backups/restore")
+@require_admin
 def restore_selected_backup():
     payload = request.get_json(silent=True) or {}
     require_confirmation(payload.get("confirmation"))
     path = find_backup(data_dir(), str(payload.get("backup_id", "")))
     result = restore_backup(data_dir(), path, database_gate())
-    result["restored_by"] = operator_name()
+    result["restored_by"] = g.admin_user
     result["restored_from"] = path.name
     current_app.logger.warning(
         "База восстановлена пользователем %s из %s; страховочная копия %s",
@@ -109,6 +116,7 @@ def restore_selected_backup():
 
 
 @bp.post("/backups/restore-upload")
+@require_admin
 def restore_uploaded_backup():
     require_confirmation(request.form.get("confirmation"))
     file = request.files.get("file")
@@ -121,7 +129,7 @@ def restore_uploaded_backup():
         file.save(target)
         validate_backup(target)
         result = restore_backup(data_dir(), target, database_gate())
-        result["restored_by"] = operator_name()
+        result["restored_by"] = g.admin_user
         result["restored_from"] = Path(file.filename).name
         current_app.logger.warning(
             "База восстановлена пользователем %s из загруженного файла %s; страховочная копия %s",

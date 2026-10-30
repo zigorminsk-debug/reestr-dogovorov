@@ -21,11 +21,12 @@
         <button class="nav-item" data-page="contracts"><span class="nav-icon">▤</span><span>Договоры</span></button>
         <button class="nav-item" data-page="reports"><span class="nav-icon">▥</span><span>Отчёты</span></button>
         <button class="nav-item" data-page="import"><span class="nav-icon">⇥</span><span>Импорт Excel</span></button>
-        <button class="nav-item" data-page="backups"><span class="nav-icon">⛉</span><span>Копии и восстановление</span></button>
+        <button id="backups-nav" class="nav-item" data-page="backups" hidden><span class="nav-icon">⛉</span><span>Копии и восстановление</span></button>
       </nav>
       <div class="sidebar-bottom">
         <div class="connection"><span id="connection-dot" class="status-dot"></span><span id="connection-text">Подключение…</span></div>
-        <a class="backup-link" href="/api/backup" download>Скачать резервную копию</a>
+        <a id="sidebar-backup-link" class="backup-link" href="/api/backup" download hidden>Скачать резервную копию</a>
+        <button id="developer-button" class="developer-link">О разработчике</button>
         <span id="app-version" class="version"></span>
       </div>
     </aside>
@@ -36,11 +37,14 @@
           <h1 id="page-title">Главная</h1>
           <p id="page-subtitle">Контроль договоров и оплат в одном окне</p>
         </div>
-        <button id="operator-button" class="operator-button" title="Изменить имя пользователя">
-          <span class="operator-avatar" id="operator-avatar">—</span>
-          <span><small>Пользователь</small><strong id="operator-name">Не указан</strong></span>
-          <span aria-hidden="true">⌄</span>
-        </button>
+        <div class="topbar-actions">
+          <button id="admin-button" class="admin-button" title="Вход администратора"><span aria-hidden="true">⛨</span><span id="admin-button-text">Администратор</span></button>
+          <button id="operator-button" class="operator-button" title="Изменить имя пользователя">
+            <span class="operator-avatar" id="operator-avatar">—</span>
+            <span><small>Пользователь</small><strong id="operator-name">Не указан</strong></span>
+            <span aria-hidden="true">⌄</span>
+          </button>
+        </div>
       </header>
 
       <main>
@@ -253,6 +257,35 @@
     <div class="dialog-header"><div><h2>Запись уже изменена</h2><p>Другой пользователь сохранил новую версию, пока вы редактировали карточку.</p></div></div>
     <div class="dialog-body"><p>Ваши несохранённые данные не записаны. Загрузите актуальную версию и повторите изменения — это защищает от потери чужой работы.</p></div>
     <div class="dialog-footer"><button class="button secondary" data-action="close-conflict">Закрыть</button><button class="button primary" data-action="reload-conflict">Загрузить актуальную версию</button></div>
+  </dialog>
+
+  <dialog id="admin-dialog" class="small-dialog">
+    <div id="admin-login-view">
+      <form id="admin-login-form">
+        <div class="dialog-header"><div><span class="eyebrow">ЗАЩИЩЁННЫЙ РАЗДЕЛ</span><h2>Вход администратора</h2><p>Только администратор управляет резервными копиями и восстановлением.</p></div><button type="button" class="icon-button" data-action="close-admin" aria-label="Закрыть">×</button></div>
+        <div class="dialog-body">
+          <div id="admin-not-configured" class="message warning" hidden>Администратор ещё не создан. Запустите установщик новой версии на сервере и создайте учётную запись.</div>
+          <label><span>Логин</span><input name="username" maxlength="64" required autocomplete="username" value="admin"></label>
+          <label><span>Пароль</span><input type="password" name="password" maxlength="256" required autocomplete="current-password"></label>
+          <div id="admin-login-message" class="message error" hidden></div>
+        </div>
+        <div class="dialog-footer"><button type="button" class="button secondary" data-action="close-admin">Отмена</button><button type="submit" id="admin-login-submit" class="button primary">Войти</button></div>
+      </form>
+    </div>
+    <div id="admin-profile-view" hidden>
+      <div class="dialog-header"><div><span class="eyebrow">ЗАЩИЩЁННЫЙ РАЗДЕЛ</span><h2>Администратор</h2><p id="admin-profile-name"></p></div><button type="button" class="icon-button" data-action="close-admin" aria-label="Закрыть">×</button></div>
+      <div class="dialog-body"><p>Вам доступны настройки расписания, создание и скачивание резервных копий, а также восстановление базы.</p></div>
+      <div class="dialog-footer"><button type="button" class="button secondary" data-action="admin-logout">Выйти</button><button type="button" class="button primary" data-action="open-backup-admin">Копии и восстановление</button></div>
+    </div>
+  </dialog>
+
+  <dialog id="developer-dialog" class="small-dialog developer-dialog">
+    <div class="dialog-header"><div><span class="eyebrow">РЕЕСТР ДОГОВОРОВ</span><h2>Разработчик</h2></div><button type="button" class="icon-button" data-action="close-developer" aria-label="Закрыть">×</button></div>
+    <div class="dialog-body">
+      <div class="developer-name">Zakharevich Igor</div>
+      <div class="developer-contacts"><a href="mailto:ziv@csl.by">ziv@csl.by</a><a href="http://csl.by" target="_blank" rel="noopener noreferrer">csl.by</a><a href="tel:+375293371412">+375 29 337-14-12</a></div>
+    </div>
+    <div class="dialog-footer"><button type="button" class="button primary" data-action="close-developer">Закрыть</button></div>
   </dialog>
 
   <dialog id="restore-dialog" class="small-dialog restore-dialog">

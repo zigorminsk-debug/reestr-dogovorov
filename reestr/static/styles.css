@@ -96,6 +96,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .operator-button small { color: var(--muted); font-size: 10px; font-weight: 400; }
 .operator-button strong { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .operator-avatar { display: grid; place-items: center; width: 37px; height: 37px; border-radius: 50%; background: var(--teal-soft); color: var(--teal-dark); font-weight: 700; }
+.topbar-actions { display: flex; align-items: center; gap: 13px; }
+.admin-button { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 7px 11px; border: 1px solid #ccd9db; border-radius: 8px; background: #fff; color: var(--navy); font-size: 12px; font-weight: 650; }
+.admin-button:hover { background: var(--teal-soft); border-color: #9db9bd; }
+.admin-button.authenticated { color: var(--green); background: var(--green-soft); border-color: #bfddcb; }
+.developer-link { display: block; padding: 0; margin: 0 0 10px; border: 0; background: transparent; color: #b8d0d5; font-size: 11px; text-align: left; }
+.developer-link:hover { color: #fff; text-decoration: underline; }
+.developer-name { margin-bottom: 16px; color: var(--navy); font-size: 22px; font-weight: 750; }
+.developer-contacts { display: grid; gap: 10px; }
+.developer-contacts a { color: var(--teal); font-size: 14px; text-decoration: none; }
+.developer-contacts a:hover { text-decoration: underline; }
+#admin-login-form .dialog-body { display: grid; gap: 13px; }
+#admin-login-form .dialog-body .message { margin: 0; }
+#admin-login-form label { display: grid; gap: 5px; color: #53656a; font-size: 11px; }
+
 main { padding: 26px 34px 42px; max-width: 1800px; margin: 0 auto; }
 .page { animation: page-in .18s ease-out; }
 @keyframes page-in { from { opacity: .4; transform: translateY(3px); } to { opacity: 1; transform: none; } }
@@ -325,6 +339,9 @@ legend { width: 100%; padding: 0 0 9px; margin-bottom: 12px; border-bottom: 1px 
 @media (max-width: 620px) {
   .topbar p, .operator-button small, .operator-button > span:last-child { display: none; }
   .topbar h1 { font-size: 20px; }
+  .topbar-actions { gap: 6px; }
+  .admin-button { padding: 7px; }
+  .admin-button span:last-child { display: none; }
   .operator-button strong { max-width: 100px; }
   main { padding: 15px 11px 30px; }
   .welcome-panel { align-items: flex-start; }

@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$InstallDir,
-    [int]$Port = 8080
+    [int]$Port = 8080,
+    [string]$BootstrapFile = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -8,12 +9,29 @@ $taskName = "ReestrDogovorov Server"
 $firewallName = "ReestrDogovorov HTTP"
 $dataDir = Join-Path $env:ProgramData "ReestrDogovorov"
 $configPath = Join-Path $dataDir "server.json"
+$authPath = Join-Path $dataDir "auth.json"
+if (-not $BootstrapFile) { $BootstrapFile = Join-Path $dataDir "bootstrap-admin.json" }
 $executable = Join-Path $InstallDir "ReestrDogovorov.exe"
 
 if (-not (Test-Path $executable)) { throw "Application executable not found: $executable" }
 foreach ($directory in @("data", "backups", "exports", "logs")) {
     New-Item -ItemType Directory -Force -Path (Join-Path $dataDir $directory) | Out-Null
 }
+
+if (Test-Path $authPath) {
+    # Remove an obsolete bootstrap secret without replacing the existing administrator.
+    Remove-Item $BootstrapFile -Force -ErrorAction SilentlyContinue
+} else {
+    if (-not (Test-Path $BootstrapFile)) { throw "Administrator credentials were not supplied by the installer." }
+    $arguments = @("--init-admin", "--credentials-file", "`"$BootstrapFile`"")
+    $initialization = Start-Process -FilePath $executable -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
+    if ($initialization.ExitCode -ne 0 -or -not (Test-Path $authPath)) {
+        throw "Administrator initialization failed. The server will not be started."
+    }
+}
+if (Test-Path $BootstrapFile) { Remove-Item $BootstrapFile -Force }
+& icacls.exe $authPath /inheritance:r /grant:r "*S-1-5-18:F" "*S-1-5-32-544:F" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Could not protect auth.json with a SYSTEM/Administrators-only ACL." }
 
 if (Test-Path $configPath) {
     try {
