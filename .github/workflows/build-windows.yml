@@ -107,8 +107,14 @@ jobs:
         shell: pwsh
         run: |
           $version = python -c "from reestr import __version__; print(__version__)"
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" packaging/installer.iss
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
+          $compileOutput = & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$version" packaging/installer.iss 2>&1
+          $compileExitCode = $LASTEXITCODE
+          $compileOutput | Write-Output
+          if ($compileExitCode -ne 0) {
+            $details = (($compileOutput -join "`n") -replace "%", "%25" -replace "`r", "" -replace "`n", "%0A")
+            Write-Output "::error::Inno Setup compiler output:%0A$details"
+            throw "Inno Setup compilation failed"
+          }
 
       - name: Create checksum
         shell: pwsh
