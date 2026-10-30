@@ -120,6 +120,22 @@ begin
   end;
 end;
 
+function Hex4(const Value: Integer): String;
+var
+  Digits: String;
+  I: Integer;
+  Remaining: Integer;
+begin
+  Digits := '0123456789ABCDEF';
+  Remaining := Value;
+  Result := '';
+  for I := 1 to 4 do
+  begin
+    Result := Copy(Digits, (Remaining mod 16) + 1, 1) + Result;
+    Remaining := Remaining div 16;
+  end;
+end;
+
 function JsonEscape(const Value: String): String;
 var
   I: Integer;
@@ -132,7 +148,7 @@ begin
   begin
     Code := Ord(Value[I]);
     if (Code < 32) or (Code > 126) then
-      Result := Result + '\u' + IntToHex(Code, 4)
+      Result := Result + '\u' + Hex4(Code)
     else if (Code = 34) or (Code = 92) then
       Result := Result + '\' + Value[I]
     else
